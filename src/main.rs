@@ -32,6 +32,9 @@ use crate::scaling::{Bounds, Range};
 
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 
+// Suggested value from https://docs.rs/svg2polylines/0.7.0/svg2polylines/fn.parse.html
+const SVG2POLYLINES_TOLERANCE: f64 = 0.15;
+
 /// Used for limiting the running time.
 ///
 /// Note: Limiting the time only works for scheduled tasks!
@@ -362,7 +365,7 @@ impl ResponseError for JsonError {
 type JsonResult<T> = Result<T, JsonError>;
 
 fn preview_handler(req: Json<PreviewRequest>) -> JsonResult<Json<Vec<Polyline>>> {
-    match svg2polylines::parse(&req.svg) {
+    match svg2polylines::parse(&req.svg, SVG2POLYLINES_TOLERANCE) {
         Ok(polylines) => Ok(Json(polylines)),
         Err(errmsg) => Err(JsonError::ClientError(ErrorDetails::from(errmsg))),
     }
@@ -379,10 +382,11 @@ fn print_handler(req: HttpRequest<State>) -> impl Future<Item = HttpResponse, Er
         .and_then(move |print_request: PrintRequest| {
             // Parse SVG into list of polylines
             info!("Requested print mode: {:?}", print_request.mode);
-            let mut polylines = match svg2polylines::parse(&print_request.svg) {
-                Ok(polylines) => polylines,
-                Err(e) => return Err(JsonError::ClientError(ErrorDetails::from(e))),
-            };
+            let mut polylines =
+                match svg2polylines::parse(&print_request.svg, SVG2POLYLINES_TOLERANCE) {
+                    Ok(polylines) => polylines,
+                    Err(e) => return Err(JsonError::ClientError(ErrorDetails::from(e))),
+                };
 
             // Scale polylines
             scaling::scale_polylines(
@@ -446,7 +450,7 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
     let polylines_set: Vec<Vec<Polyline>> = svgs
         .iter()
         .map(|ref svg| {
-            svg2polylines::parse(svg)
+            svg2polylines::parse(svg, SVG2POLYLINES_TOLERANCE)
                 .map_err(|e| HeadlessError::SvgParse(e))
                 .and_then(|mut polylines| {
                     scaling::fit_polylines(&mut polylines, &bounds)
