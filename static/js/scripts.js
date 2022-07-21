@@ -21,7 +21,7 @@ async function loadSvg(ev, svg, canvas) {
             if (r.status == 400) {
                 alert('Error. Did you upload a valid SVG file?');
             } else {
-                alert('Error (HTTP ' + r.status + ')');
+                alert(`Error (HTTP ${r.status})`);
             }
         }
     }
@@ -85,7 +85,7 @@ function printObject(svg, canvas) {
         }
 
         canvas.forEachObject(async (obj, i) => {
-            console.debug('Object', i + ':');
+            console.debug(`Object ${i}:`);
             const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
             const dy = (obj.top - obj._originalTop) / PREVIEW_SCALE_FACTOR;
             console.debug('  Moved by', dx, dy);
@@ -117,7 +117,7 @@ function printObject(svg, canvas) {
                 if (r.status == 400) {
                     alert('Error. Did you upload a valid SVG file?');
                 } else {
-                    alert('Error (HTTP ' + r.status + ')');
+                    alert(`Error (HTTP ${r.status})`);
                 }
             }
         });

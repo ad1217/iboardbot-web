@@ -30,7 +30,7 @@ async function loadSvgList() {
         element.querySelector('.loading').hidden = true;
         // Show error
         const error = element.querySelector('.error');
-        error.innerText = 'Error fetching SVG files (HTTP ' + r.status + ')';
+        error.innerText = `Error fetching SVG files (HTTP ${r.status})`;
         try {
             const parsedResponse = await r.json();
             error.innerText += '\nDetails: ' + parsedResponse.details;
@@ -80,7 +80,7 @@ async function loadConfig() {
         element.querySelector('.loading').hidden = true;
         // Show error
         const error = element.querySelector('.error');
-        error.innerText = 'Error fetching config (HTTP ' + r.status + ')';
+        error.innerText = `Error fetching config (HTTP ${r.status})`;
         error.hidden = false;
     }
 }
