@@ -4,6 +4,7 @@ version = "0.2.2"
 authors = ["Danilo Bargen <mail@dbrgn.ch>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dbrgn/iboardbot-web"
+edition = "2021"
 
 [dependencies]
 actix-web = "0.7"

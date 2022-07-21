@@ -1,19 +1,3 @@
-extern crate actix_web;
-extern crate bufstream;
-extern crate docopt;
-extern crate futures;
-extern crate scheduled_executor;
-#[macro_use]
-extern crate log;
-extern crate regex;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate serial;
-extern crate simplelog;
-extern crate svg2polylines;
-extern crate time;
-
 mod robot;
 mod scaling;
 
@@ -36,13 +20,15 @@ use actix_web::{App, HttpRequest, HttpResponse, Json, ResponseError, Result as A
 use actix_web::{AsyncResponder, HttpMessage};
 use docopt::Docopt;
 use futures::Future;
+use log::{error, info};
+use serde_derive::{Deserialize, Serialize};
 use serial::BaudRate;
 use simplelog::{Config as LogConfig, LevelFilter, SimpleLogger, TermLogger, TerminalMode};
 use svg2polylines::Polyline;
 use time::Tm;
 
-use robot::PrintTask;
-use scaling::{Bounds, Range};
+use crate::robot::PrintTask;
+use crate::scaling::{Bounds, Range};
 
 type RobotQueue = Arc<Mutex<Sender<PrintTask>>>;
 

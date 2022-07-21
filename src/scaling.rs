@@ -1,4 +1,5 @@
 //! Code for resizing, scaling and fitting polylines.
+use log::{info, warn};
 use svg2polylines::Polyline;
 
 #[derive(Debug, PartialEq)]

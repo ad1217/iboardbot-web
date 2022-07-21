@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use bufstream::BufStream;
+use log::{debug, error, info, warn};
 use regex::Regex;
 use scheduled_executor::executor::TaskHandle;
 use scheduled_executor::CoreExecutor;
@@ -14,7 +15,7 @@ use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 use time;
 
-use TimeLimits;
+use crate::TimeLimits;
 
 pub(crate) const IBB_WIDTH: u16 = 358;
 pub(crate) const IBB_HEIGHT: u16 = 123;
