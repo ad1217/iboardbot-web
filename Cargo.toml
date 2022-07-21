@@ -7,10 +7,10 @@ repository = "https://github.com/dbrgn/iboardbot-web"
 edition = "2021"
 
 [dependencies]
-actix-web = "0.7"
+actix-files = "0.6.1"
+actix-web = "4.1"
 bufstream = "0.1"
 docopt = "1"
-futures = "0.1"
 log = "0.4"
 regex = "1"
 scheduled-executor = "0.4.0"

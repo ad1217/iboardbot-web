@@ -15,13 +15,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 
-use actix_web::fs::{NamedFile, StaticFiles};
-use actix_web::http::{Method, StatusCode};
-use actix_web::server::HttpServer;
-use actix_web::{App, HttpRequest, HttpResponse, Json, ResponseError, Result as ActixResult};
-use actix_web::{AsyncResponder, HttpMessage};
+use actix_files::{Files, NamedFile};
+use actix_web::http::StatusCode;
+use actix_web::HttpServer;
+use actix_web::{get, post, web, App, HttpResponse, ResponseError, Result as ActixResult};
 use docopt::Docopt;
-use futures::Future;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
 use serial::BaudRate;
@@ -190,20 +188,21 @@ struct Args {
     flag_version: bool,
 }
 
-fn index_handler_active(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
+async fn index_handler_active() -> ActixResult<NamedFile> {
     Ok(NamedFile::open("static/index.html")?)
 }
 
-fn index_handler_preview(_req: HttpRequest) -> ActixResult<NamedFile> {
+async fn index_handler_preview() -> ActixResult<NamedFile> {
     Ok(NamedFile::open("static/index-preview.html")?)
 }
 
-fn headless_handler(_req: HttpRequest<State>) -> ActixResult<NamedFile> {
+async fn headless_handler() -> ActixResult<NamedFile> {
     Ok(NamedFile::open("static/headless.html")?)
 }
 
-fn config_handler(req: HttpRequest<State>) -> String {
-    serde_json::to_value(&req.state().config)
+#[get("/config/")]
+async fn config_handler(data: web::Data<State>) -> String {
+    serde_json::to_value(&data.config)
         .expect("Could not serialize Config object")
         .to_string()
 }
@@ -237,11 +236,12 @@ fn get_svg_files(dir: &str) -> Result<Vec<String>, io::Error> {
     Ok(svg_files)
 }
 
-fn list_handler(req: HttpRequest<State>) -> Result<Json<Vec<String>>, JsonError> {
-    let svg_files = get_svg_files(&req.state().config.svg_dir).map_err(|_e| {
+#[get("/list/")]
+async fn list_handler(data: web::Data<State>) -> Result<web::Json<Vec<String>>, JsonError> {
+    let svg_files = get_svg_files(&data.config.svg_dir).map_err(|_e| {
         JsonError::ServerError(ErrorDetails::from("Could not read files in SVG directory"))
     })?;
-    Ok(Json(svg_files))
+    Ok(web::Json(svg_files))
 }
 
 #[derive(Deserialize, Debug)]
@@ -302,56 +302,50 @@ impl ResponseError for JsonError {
 
 type JsonResult<T> = Result<T, JsonError>;
 
-fn preview_handler(req: Json<PreviewRequest>) -> JsonResult<Json<Vec<Polyline>>> {
+#[post("/preview/")]
+async fn preview_handler(req: web::Json<PreviewRequest>) -> JsonResult<web::Json<Vec<Polyline>>> {
     match svg2polylines::parse(&req.svg, SVG2POLYLINES_TOLERANCE) {
-        Ok(polylines) => Ok(Json(polylines)),
+        Ok(polylines) => Ok(web::Json(polylines)),
         Err(errmsg) => Err(JsonError::ClientError(ErrorDetails::from(errmsg))),
     }
 }
 
-fn print_handler(req: HttpRequest<State>) -> impl Future<Item = HttpResponse, Error = JsonError> {
-    req.json()
-        .map_err(|e| {
-            JsonError::ServerError(ErrorDetails::from(format!(
-                "Could not parse JSON payload: {}",
-                e
-            )))
-        })
-        .and_then(move |print_request: PrintRequest| {
-            // Parse SVG into list of polylines
-            info!("Requested print mode: {:?}", print_request.mode);
-            let mut polylines =
-                match svg2polylines::parse(&print_request.svg, SVG2POLYLINES_TOLERANCE) {
-                    Ok(polylines) => polylines,
-                    Err(e) => return Err(JsonError::ClientError(ErrorDetails::from(e))),
-                };
+#[post("/print/")]
+async fn print_handler(
+    data: web::Data<State>,
+    print_request: web::Json<PrintRequest>,
+) -> Result<HttpResponse, JsonError> {
+    // Parse SVG into list of polylines
+    info!("Requested print mode: {:?}", print_request.mode);
+    let mut polylines = match svg2polylines::parse(&print_request.svg, SVG2POLYLINES_TOLERANCE) {
+        Ok(polylines) => polylines,
+        Err(e) => return Err(JsonError::ClientError(ErrorDetails::from(e))),
+    };
 
-            // Scale polylines
-            scaling::scale_polylines(
-                &mut polylines,
-                (print_request.offset_x, print_request.offset_y),
-                (print_request.scale_x, print_request.scale_y),
-            );
+    // Scale polylines
+    scaling::scale_polylines(
+        &mut polylines,
+        (print_request.offset_x, print_request.offset_y),
+        (print_request.scale_x, print_request.scale_y),
+    );
 
-            // Get access to queue
-            let tx = req.state().robot_queue.lock().map_err(|e| {
-                JsonError::ClientError(ErrorDetails::from(format!(
-                    "Could not communicate with robot thread: {}",
-                    e
-                )))
-            })?;
-            let task = print_request.mode.to_print_task(polylines);
-            tx.send(task).map_err(|e| {
-                JsonError::ServerError(ErrorDetails::from(format!(
-                    "Could not send print request to robot thread: {}",
-                    e
-                )))
-            })?;
+    // Get access to queue
+    let tx = data.robot_queue.lock().map_err(|e| {
+        JsonError::ClientError(ErrorDetails::from(format!(
+            "Could not communicate with robot thread: {}",
+            e
+        )))
+    })?;
+    let task = print_request.mode.to_print_task(polylines);
+    tx.send(task).map_err(|e| {
+        JsonError::ServerError(ErrorDetails::from(format!(
+            "Could not send print request to robot thread: {}",
+            e
+        )))
+    })?;
 
-            info!("Printing...");
-            Ok(HttpResponse::new(StatusCode::NO_CONTENT))
-        })
-        .responder()
+    info!("Printing...");
+    Ok(HttpResponse::new(StatusCode::NO_CONTENT))
 }
 
 fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), HeadlessError> {
@@ -419,7 +413,8 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
     Ok(())
 }
 
-fn main() {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     // Parse args
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
@@ -463,13 +458,13 @@ fn main() {
 
     // Check if this is an active config
     match Config::from(&config) {
-        Some(c) => main_active(c, headless_mode),
-        None => main_preview(PreviewConfig::from(&config)),
+        Some(c) => main_active(c, headless_mode).await,
+        None => main_preview(PreviewConfig::from(&config)).await,
     }
 }
 
 /// Start the web server in active (printing) mode.
-fn main_active(config: Config, headless_mode: bool) {
+async fn main_active(config: Config, headless_mode: bool) -> std::io::Result<()> {
     info!("Starting server in active mode (with robot attached)");
 
     // Check for presence of relevant paths
@@ -478,7 +473,7 @@ fn main_active(config: Config, headless_mode: bool) {
         error!("Device {} does not exist", &config.device);
         abort(2);
     }
-    let static_dir_path = Path::new(&config.static_dir);
+    let static_dir_path = PathBuf::from(&config.static_dir);
     if !static_dir_path.exists() || !static_dir_path.is_dir() {
         error!("Static files dir does not exist");
         abort(2);
@@ -495,10 +490,10 @@ fn main_active(config: Config, headless_mode: bool) {
 
     // Initialize server state
     let robot_queue = Arc::new(Mutex::new(tx));
-    let state = State {
+    let state = web::Data::new(State {
         config: config.clone(),
         robot_queue: robot_queue.clone(),
-    };
+    });
 
     // Print mode
     match headless_mode {
@@ -518,29 +513,28 @@ fn main_active(config: Config, headless_mode: bool) {
     let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
-        let mut app = App::with_state(state.clone())
-            .handler("/static", StaticFiles::new("static").unwrap())
-            .route("/config/", Method::GET, config_handler)
-            .route("/list/", Method::GET, list_handler)
-            .route("/preview/", Method::POST, preview_handler)
-            .resource("/print/", |r| {
-                r.method(Method::POST).with_async(print_handler)
-            });
+        let mut app = App::new()
+            .app_data(state.clone())
+            .service(Files::new("/static", &config.static_dir))
+            .service(config_handler)
+            .service(list_handler)
+            .service(preview_handler)
+            .service(print_handler);
         if headless_mode {
-            app = app.route("/", Method::GET, headless_handler);
+            app = app.route("/", web::get().to(headless_handler));
         } else {
-            app = app.route("/headless/", Method::GET, headless_handler); // For development
-            app = app.route("/", Method::GET, index_handler_active);
+            app = app.route("/headless/", web::get().to(headless_handler)); // For development
+            app = app.route("/", web::get().to(index_handler_active));
         };
         app
     })
-    .bind(interface)
-    .unwrap()
-    .run();
+    .bind(interface)?
+    .run()
+    .await
 }
 
 /// Start the web server in preview-only mode.
-fn main_preview(config: PreviewConfig) {
+async fn main_preview(config: PreviewConfig) -> std::io::Result<()> {
     info!("Starting server in preview-only mode");
 
     // Check for presence of relevant paths
@@ -555,13 +549,13 @@ fn main_preview(config: PreviewConfig) {
     info!("Listening on {}", interface);
     HttpServer::new(move || {
         App::new()
-            .handler("/static", StaticFiles::new(&config.static_dir).unwrap())
-            .route("/preview/", Method::POST, preview_handler)
-            .route("/", Method::GET, index_handler_preview)
+            .service(Files::new("/static", &config.static_dir))
+            .service(preview_handler)
+            .route("/", web::get().to(index_handler_preview))
     })
-    .bind(interface)
-    .unwrap()
-    .run();
+    .bind(interface)?
+    .run()
+    .await
 }
 
 fn abort(exit_code: i32) -> ! {
