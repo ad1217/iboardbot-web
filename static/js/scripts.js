@@ -5,28 +5,25 @@ const PREVIEW_SCALE_FACTOR = 3; // Preview is scaled with a factor of 3
 /**
  * Load an SVG file.
  */
-function loadSvg(ev, svg, canvas) {
+async function loadSvg(ev, svg, canvas) {
     if (svg.text) {
-        const request = new XMLHttpRequest();
-        request.open('POST', '/preview/', true);
-        request.setRequestHeader('Content-Type', 'application/json');
-        request.onload = function () {
-            if (this.status == 200) {
-                // Success
-                const polylines = JSON.parse(this.response);
-                canvas.clear();
-                drawPreview(canvas, polylines);
+        const r = await fetch('/preview/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ svg: svg.text }),
+        });
+        if (r.ok) {
+            const polylines = await r.json();
+            canvas.clear();
+            drawPreview(canvas, polylines);
+        } else {
+            console.error('Error: HTTP', r.status);
+            if (r.status == 400) {
+                alert('Error. Did you upload a valid SVG file?');
             } else {
-                // Error
-                console.error('Error: HTTP', this.status);
-                if (this.status == 400) {
-                    alert('Error. Did you upload a valid SVG file?');
-                } else {
-                    alert('Error (HTTP ' + this.status + ')');
-                }
+                alert('Error (HTTP ' + r.status + ')');
             }
-        };
-        request.send(JSON.stringify({ svg: svg.text }));
+        }
     }
 }
 
@@ -87,44 +84,42 @@ function printObject(svg, canvas) {
             return;
         }
 
-        canvas.forEachObject((obj, i) => {
+        canvas.forEachObject(async (obj, i) => {
             console.debug('Object', i + ':');
             const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
             const dy = (obj.top - obj._originalTop) / PREVIEW_SCALE_FACTOR;
             console.debug('  Moved by', dx, dy);
             console.debug('  Scaled by', obj.scaleX, obj.scaleY);
 
-            const request = new XMLHttpRequest();
-            request.open('POST', '/print/', true);
-            request.setRequestHeader('Content-Type', 'application/json');
-            request.onload = function () {
-                if (this.status == 204) {
-                    // Success TODO
-                    if (printMode == 'once') {
-                        alert('Printing!');
-                    } else {
-                        alert('Scheduled printing!');
-                    }
-                } else {
-                    // Error
-                    console.error('Error: HTTP', this.status);
-                    if (this.status == 400) {
-                        alert('Error. Did you upload a valid SVG file?');
-                    } else {
-                        alert('Error (HTTP ' + this.status + ')');
-                    }
-                }
-            };
-            request.send(
-                JSON.stringify({
+            const r = await fetch('/print/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     svg: svg.text,
                     offset_x: dx,
                     offset_y: dy,
                     scale_x: obj.scaleX,
                     scale_y: obj.scaleY,
                     mode: printMode,
-                })
-            );
+                }),
+            });
+
+            if (r.status == 204) {
+                // Success TODO
+                if (printMode == 'once') {
+                    alert('Printing!');
+                } else {
+                    alert('Scheduled printing!');
+                }
+            } else {
+                // Error
+                console.error('Error: HTTP', r.status);
+                if (r.status == 400) {
+                    alert('Error. Did you upload a valid SVG file?');
+                } else {
+                    alert('Error (HTTP ' + r.status + ')');
+                }
+            }
         });
     };
 }
