@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <meta charset="utf8">
+        <meta charset="utf8" />
         <title>iBoardBot</title>
-        <link rel="stylesheet" type="text/css" href="/static/css/style.css">
+        <link rel="stylesheet" type="text/css" href="/static/css/style.css" />
     </head>
     <body>
         <h1>iBoardBot Web</h1>
 
         <h2>1: Choose file</h2>
-        <input type="file" name="file">
+        <input type="file" name="file" />
 
         <h2>2: Preview</h2>
         <canvas id="preview" width="1074" height="369"></canvas>
@@ -17,22 +17,66 @@
         <h3>3: Print</h3>
 
         <p>Mode:</p>
-        <div><input type="radio" name="mode" value="once" id="mode-once" checked="checked"> <label for="mode-once">Once</label></div>
-        <div><input type="radio" name="mode" value="schedule5" id="mode-schedule-5"> <label for="mode-schedule-5">Schedule every 5 minutes</label></div>
-        <div><input type="radio" name="mode" value="schedule15" id="mode-schedule-15"> <label for="mode-schedule-15">Schedule every 15 minutes</label></div>
-        <div><input type="radio" name="mode" value="schedule30" id="mode-schedule-30"> <label for="mode-schedule-30">Schedule every 30 minutes</label></div>
-        <div><input type="radio" name="mode" value="schedule60" id="mode-schedule-60"> <label for="mode-schedule-60">Schedule every 60 minutes</label></div>
+        <div>
+            <input
+                type="radio"
+                name="mode"
+                value="once"
+                id="mode-once"
+                checked="checked"
+            />
+            <label for="mode-once">Once</label>
+        </div>
+        <div>
+            <input
+                type="radio"
+                name="mode"
+                value="schedule5"
+                id="mode-schedule-5"
+            />
+            <label for="mode-schedule-5">Schedule every 5 minutes</label>
+        </div>
+        <div>
+            <input
+                type="radio"
+                name="mode"
+                value="schedule15"
+                id="mode-schedule-15"
+            />
+            <label for="mode-schedule-15">Schedule every 15 minutes</label>
+        </div>
+        <div>
+            <input
+                type="radio"
+                name="mode"
+                value="schedule30"
+                id="mode-schedule-30"
+            />
+            <label for="mode-schedule-30">Schedule every 30 minutes</label>
+        </div>
+        <div>
+            <input
+                type="radio"
+                name="mode"
+                value="schedule60"
+                id="mode-schedule-60"
+            />
+            <label for="mode-schedule-60">Schedule every 60 minutes</label>
+        </div>
 
-        <br>
+        <br />
 
-        <input type="button" name="print" id="print" value="Print">
+        <input type="button" name="print" id="print" value="Print" />
 
         <footer>
-            Software by <a href="https://dbrgn.ch/">Danilo Bargen</a> |
-            Fork me <a href="https://github.com/dbrgn/iboardbot-web">on GitHub</a>
+            Software by <a href="https://dbrgn.ch/">Danilo Bargen</a> | Fork me
+            <a href="https://github.com/dbrgn/iboardbot-web">on GitHub</a>
         </footer>
 
-        <script type="text/javascript" src="/static/js/fabric/fabric.min.js"></script>
+        <script
+            type="text/javascript"
+            src="/static/js/fabric/fabric.min.js"
+        ></script>
         <script type="text/javascript" src="/static/js/common.js"></script>
         <script type="text/javascript" src="/static/js/scripts.js"></script>
     </body>

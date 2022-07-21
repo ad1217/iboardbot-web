@@ -5,7 +5,7 @@ function loadSvgList() {
     const request = new XMLHttpRequest();
     request.open('GET', '/list/', true);
     request.setRequestHeader('Content-Type', 'application/json');
-    request.onload = function() {
+    request.onload = function () {
         if (this.status == 200) {
             // Success
             const files = JSON.parse(this.response);
@@ -33,14 +33,15 @@ function loadSvgList() {
             element.querySelector('.loading').hidden = true;
             // Show error
             const error = element.querySelector('.error');
-            error.innerText = 'Error fetching SVG files (HTTP ' + this.status + ')';
+            error.innerText =
+                'Error fetching SVG files (HTTP ' + this.status + ')';
             try {
                 const parsedResponse = JSON.parse(this.response);
                 error.innerText += '\nDetails: ' + parsedResponse.details;
             } catch {}
             error.hidden = false;
         }
-    }
+    };
     request.send();
 }
 
@@ -51,7 +52,7 @@ function loadConfig() {
     const request = new XMLHttpRequest();
     request.open('GET', '/config/', true);
     request.setRequestHeader('Content-Type', 'application/json');
-    request.onload = function() {
+    request.onload = function () {
         if (this.status == 200) {
             // Success
             const config = JSON.parse(this.response);
@@ -62,9 +63,12 @@ function loadConfig() {
             // Show config
             const items = element.querySelector('dl.items');
             const configEntries = [
-                {key: "device", label: "Device"},
-                {key: "svg_dir", label: "SVG Directory"},
-                {key: "interval_seconds", label: "Start drawing every n seconds"},
+                { key: 'device', label: 'Device' },
+                { key: 'svg_dir', label: 'SVG Directory' },
+                {
+                    key: 'interval_seconds',
+                    label: 'Start drawing every n seconds',
+                },
             ];
             for (const item of configEntries) {
                 const key = document.createElement('dt');
@@ -72,8 +76,10 @@ function loadConfig() {
                 items.appendChild(key);
                 const value = document.createElement('dd');
                 const valueCode = document.createElement('code');
-                valueCode.appendChild(document.createTextNode(config[item.key]));
-                value.appendChild(valueCode)
+                valueCode.appendChild(
+                    document.createTextNode(config[item.key])
+                );
+                value.appendChild(valueCode);
                 items.appendChild(value);
             }
             items.hidden = false;
@@ -85,10 +91,11 @@ function loadConfig() {
             element.querySelector('.loading').hidden = true;
             // Show error
             const error = element.querySelector('.error');
-            error.innerText = 'Error fetching config (HTTP ' + this.status + ')';
+            error.innerText =
+                'Error fetching config (HTTP ' + this.status + ')';
             error.hidden = false;
         }
-    }
+    };
     request.send();
 }
 
