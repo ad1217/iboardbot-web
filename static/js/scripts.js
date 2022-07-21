@@ -74,54 +74,50 @@ function drawPreview(canvas, polylines) {
  * Send the object to the printer.
  */
 function printObject(svg, canvas) {
-    return function (clickEvent) {
-        const printMode = document.querySelector(
-            'input[name=mode]:checked'
-        ).value;
+    const printMode = document.querySelector('input[name=mode]:checked').value;
 
-        if (canvas.getObjects().length == 0) {
-            alert('No object loaded. Please choose an SVG file first.');
-            return;
-        }
+    if (canvas.getObjects().length == 0) {
+        alert('No object loaded. Please choose an SVG file first.');
+        return;
+    }
 
-        canvas.forEachObject(async (obj, i) => {
-            console.debug(`Object ${i}:`);
-            const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
-            const dy = (obj.top - obj._originalTop) / PREVIEW_SCALE_FACTOR;
-            console.debug('  Moved by', dx, dy);
-            console.debug('  Scaled by', obj.scaleX, obj.scaleY);
+    canvas.forEachObject(async (obj, i) => {
+        console.debug(`Object ${i}:`);
+        const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
+        const dy = (obj.top - obj._originalTop) / PREVIEW_SCALE_FACTOR;
+        console.debug('  Moved by', dx, dy);
+        console.debug('  Scaled by', obj.scaleX, obj.scaleY);
 
-            const r = await fetch('/print/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    svg: svg.text,
-                    offset_x: dx,
-                    offset_y: dy,
-                    scale_x: obj.scaleX,
-                    scale_y: obj.scaleY,
-                    mode: printMode,
-                }),
-            });
-
-            if (r.status == 204) {
-                // Success TODO
-                if (printMode == 'once') {
-                    alert('Printing!');
-                } else {
-                    alert('Scheduled printing!');
-                }
-            } else {
-                // Error
-                console.error('Error: HTTP', r.status);
-                if (r.status == 400) {
-                    alert('Error. Did you upload a valid SVG file?');
-                } else {
-                    alert(`Error (HTTP ${r.status})`);
-                }
-            }
+        const r = await fetch('/print/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                svg: svg.text,
+                offset_x: dx,
+                offset_y: dy,
+                scale_x: obj.scaleX,
+                scale_y: obj.scaleY,
+                mode: printMode,
+            }),
         });
-    };
+
+        if (r.status == 204) {
+            // Success TODO
+            if (printMode == 'once') {
+                alert('Printing!');
+            } else {
+                alert('Scheduled printing!');
+            }
+        } else {
+            // Error
+            console.error('Error: HTTP', r.status);
+            if (r.status == 400) {
+                alert('Error. Did you upload a valid SVG file?');
+            } else {
+                alert(`Error (HTTP ${r.status})`);
+            }
+        }
+    });
 }
 
 ready(() => {
@@ -147,5 +143,5 @@ ready(() => {
     });
 
     const print = document.querySelector('input#print');
-    print.addEventListener('click', printObject(svg, canvas));
+    print.addEventListener('click', (_clickEvent) => printObject(svg, canvas));
 });
