@@ -3,9 +3,11 @@ extern crate bufstream;
 extern crate docopt;
 extern crate futures;
 extern crate scheduled_executor;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate regex;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_json;
 extern crate serial;
 extern crate simplelog;
@@ -18,24 +20,24 @@ mod scaling;
 use std::convert::From;
 use std::ffi::OsStr;
 use std::fmt;
-use std::fs::{File, DirEntry, read_dir};
+use std::fs::{read_dir, DirEntry, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 use std::thread::sleep;
+use std::time::Duration;
 
-use actix_web::{AsyncResponder, HttpMessage};
-use actix_web::{App, HttpRequest, HttpResponse, Json, Result as ActixResult, ResponseError};
-use actix_web::fs::{StaticFiles, NamedFile};
+use actix_web::fs::{NamedFile, StaticFiles};
 use actix_web::http::{Method, StatusCode};
 use actix_web::server::HttpServer;
+use actix_web::{App, HttpRequest, HttpResponse, Json, ResponseError, Result as ActixResult};
+use actix_web::{AsyncResponder, HttpMessage};
 use docopt::Docopt;
 use futures::Future;
 use serial::BaudRate;
-use simplelog::{TermLogger, SimpleLogger, LevelFilter, Config as LogConfig, TerminalMode};
+use simplelog::{Config as LogConfig, LevelFilter, SimpleLogger, TermLogger, TerminalMode};
 use svg2polylines::Polyline;
 use time::Tm;
 
@@ -55,7 +57,11 @@ pub(crate) struct TimeLimits {
 
 impl TimeLimits {
     pub(crate) fn is_within_limits(&self, time: &Tm) -> bool {
-        let Tm { tm_hour: hour, tm_min: min, .. } = time;
+        let Tm {
+            tm_hour: hour,
+            tm_min: min,
+            ..
+        } = time;
         let start: i32 = self.start_time.0 as i32 * 60 + self.start_time.1 as i32;
         let now: i32 = hour * 60 + min;
         let end: i32 = self.end_time.0 as i32 * 60 + self.end_time.1 as i32;
@@ -69,9 +75,11 @@ impl TimeLimits {
 
 impl fmt::Display for TimeLimits {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:02}:{:02}–{:02}:{:02}",
-               self.start_time.0, self.start_time.1,
-               self.end_time.0, self.end_time.1)
+        write!(
+            f,
+            "{:02}:{:02}–{:02}:{:02}",
+            self.start_time.0, self.start_time.1, self.end_time.0, self.end_time.1
+        )
     }
 }
 
@@ -130,7 +138,14 @@ impl Config {
             }
         };
         let time_limits = config.time_limits;
-        Some(Self { listen, device, svg_dir, static_dir, interval_seconds, time_limits })
+        Some(Self {
+            listen,
+            device,
+            svg_dir,
+            static_dir,
+            interval_seconds,
+            time_limits,
+        })
     }
 }
 
@@ -143,8 +158,14 @@ struct PreviewConfig {
 impl PreviewConfig {
     fn from(config: &RawConfig) -> Self {
         Self {
-            listen: config.listen.clone().unwrap_or_else(|| "listen".to_string()),
-            static_dir: config.static_dir.clone().unwrap_or_else(|| "static".to_string()),
+            listen: config
+                .listen
+                .clone()
+                .unwrap_or_else(|| "listen".to_string()),
+            static_dir: config
+                .static_dir
+                .clone()
+                .unwrap_or_else(|| "static".to_string()),
         }
     }
 }
@@ -237,27 +258,32 @@ fn get_svg_files(dir: &str) -> Result<Vec<String>, io::Error> {
         // If any iterator entry fails, fail the whole iterator.
         .and_then(|iter| iter.collect::<Result<Vec<DirEntry>, io::Error>>())
         // Filter directory entries
-        .map(|entries| entries.iter()
-             // Get filepath for entry
-            .map(|entry| entry.path())
-             // We only want files
-            .filter(|path| path.is_file())
-            // Map to filename
-            .filter_map(|ref path| path.file_name().map(OsStr::to_os_string).and_then(|oss| oss.into_string().ok()))
-            // We only want .svg files
-            .filter(|filename| filename.ends_with(".svg"))
-            // Collect vector of strings
-            .collect::<Vec<String>>()
-        )?;
+        .map(|entries| {
+            entries
+                .iter()
+                // Get filepath for entry
+                .map(|entry| entry.path())
+                // We only want files
+                .filter(|path| path.is_file())
+                // Map to filename
+                .filter_map(|ref path| {
+                    path.file_name()
+                        .map(OsStr::to_os_string)
+                        .and_then(|oss| oss.into_string().ok())
+                })
+                // We only want .svg files
+                .filter(|filename| filename.ends_with(".svg"))
+                // Collect vector of strings
+                .collect::<Vec<String>>()
+        })?;
     svg_files.sort();
     Ok(svg_files)
 }
 
 fn list_handler(req: HttpRequest<State>) -> Result<Json<Vec<String>>, JsonError> {
-    let svg_files = get_svg_files(&req.state().config.svg_dir)
-        .map_err(|_e| JsonError::ServerError(
-            ErrorDetails::from("Could not read files in SVG directory")
-        ))?;
+    let svg_files = get_svg_files(&req.state().config.svg_dir).map_err(|_e| {
+        JsonError::ServerError(ErrorDetails::from("Could not read files in SVG directory"))
+    })?;
     Ok(Json(svg_files))
 }
 
@@ -280,10 +306,18 @@ impl PrintMode {
     fn to_print_task(&self, polylines: Vec<Polyline>) -> PrintTask {
         match *self {
             PrintMode::Once => PrintTask::Once(polylines),
-            PrintMode::Schedule5 => PrintTask::Scheduled(Duration::from_secs(5 * 60), vec![polylines]),
-            PrintMode::Schedule15 => PrintTask::Scheduled(Duration::from_secs(15 * 60), vec![polylines]),
-            PrintMode::Schedule30 => PrintTask::Scheduled(Duration::from_secs(30 * 60), vec![polylines]),
-            PrintMode::Schedule60 => PrintTask::Scheduled(Duration::from_secs(60 * 60), vec![polylines]),
+            PrintMode::Schedule5 => {
+                PrintTask::Scheduled(Duration::from_secs(5 * 60), vec![polylines])
+            }
+            PrintMode::Schedule15 => {
+                PrintTask::Scheduled(Duration::from_secs(15 * 60), vec![polylines])
+            }
+            PrintMode::Schedule30 => {
+                PrintTask::Scheduled(Duration::from_secs(30 * 60), vec![polylines])
+            }
+            PrintMode::Schedule60 => {
+                PrintTask::Scheduled(Duration::from_secs(60 * 60), vec![polylines])
+            }
         }
     }
 }
@@ -325,9 +359,8 @@ impl fmt::Display for JsonError {
         });
         write!(f, "{}", val.expect("Could not serialize error details"))
     }
-
 }
-impl std::error::Error for JsonError { }
+impl std::error::Error for JsonError {}
 impl ResponseError for JsonError {
     fn error_response(&self) -> HttpResponse {
         let mut builder = match self {
@@ -349,11 +382,14 @@ fn preview_handler(req: Json<PreviewRequest>) -> JsonResult<Json<Vec<Polyline>>>
     }
 }
 
-fn print_handler(req: HttpRequest<State>) -> impl Future<Item=HttpResponse, Error=JsonError> {
+fn print_handler(req: HttpRequest<State>) -> impl Future<Item = HttpResponse, Error = JsonError> {
     req.json()
-        .map_err(|e| JsonError::ServerError(ErrorDetails::from(
-            format!("Could not parse JSON payload: {}", e)
-        )))
+        .map_err(|e| {
+            JsonError::ServerError(ErrorDetails::from(format!(
+                "Could not parse JSON payload: {}",
+                e
+            )))
+        })
         .and_then(move |print_request: PrintRequest| {
             // Parse SVG into list of polylines
             info!("Requested print mode: {:?}", print_request.mode);
@@ -370,15 +406,19 @@ fn print_handler(req: HttpRequest<State>) -> impl Future<Item=HttpResponse, Erro
             );
 
             // Get access to queue
-            let tx = req.state().robot_queue.lock()
-                .map_err(|e| JsonError::ClientError(ErrorDetails::from(
-                    format!("Could not communicate with robot thread: {}", e)
-                )))?;
+            let tx = req.state().robot_queue.lock().map_err(|e| {
+                JsonError::ClientError(ErrorDetails::from(format!(
+                    "Could not communicate with robot thread: {}",
+                    e
+                )))
+            })?;
             let task = print_request.mode.to_print_task(polylines);
-            tx.send(task)
-                .map_err(|e| JsonError::ServerError(ErrorDetails::from(
-                    format!("Could not send print request to robot thread: {}", e)
-                )))?;
+            tx.send(task).map_err(|e| {
+                JsonError::ServerError(ErrorDetails::from(format!(
+                    "Could not send print request to robot thread: {}",
+                    e
+                )))
+            })?;
 
             info!("Printing...");
             Ok(HttpResponse::new(StatusCode::NO_CONTENT))
@@ -405,13 +445,20 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
 
     // Specify target area bounds
     let mut bounds = Bounds {
-        x: Range { min: 0.0, max: f64::from(robot::IBB_WIDTH) },
-        y: Range { min: 0.0, max: f64::from(robot::IBB_HEIGHT) },
+        x: Range {
+            min: 0.0,
+            max: f64::from(robot::IBB_WIDTH),
+        },
+        y: Range {
+            min: 0.0,
+            max: f64::from(robot::IBB_HEIGHT),
+        },
     };
     bounds.add_padding(5.0);
 
     // Parse SVG strings into lists of polylines
-    let polylines_set: Vec<Vec<Polyline>> = svgs.iter()
+    let polylines_set: Vec<Vec<Polyline>> = svgs
+        .iter()
         .map(|ref svg| {
             svg2polylines::parse(svg)
                 .map_err(|e| HeadlessError::SvgParse(e))
@@ -424,21 +471,21 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
         .collect::<Result<Vec<_>, HeadlessError>>()?;
 
     // Get access to queue
-    let tx = robot_queue
-        .lock()
-        .map_err(|e| HeadlessError::Queue(
-            format!("Could not communicate with robot thread: {}", e)
-        ))?;
+    let tx = robot_queue.lock().map_err(|e| {
+        HeadlessError::Queue(format!("Could not communicate with robot thread: {}", e))
+    })?;
 
     // Create print task
     let interval_duration = Duration::from_secs(config.interval_seconds);
     let task = PrintTask::Scheduled(interval_duration, polylines_set);
 
     // Send task to robot
-    tx.send(task)
-        .map_err(|e| HeadlessError::Queue(
-            format!("Could not send print request to robot thread: {}", e)
-        ))?;
+    tx.send(task).map_err(|e| {
+        HeadlessError::Queue(format!(
+            "Could not send print request to robot thread: {}",
+            e
+        ))
+    })?;
 
     info!("Printing...");
     Ok(())
@@ -447,8 +494,8 @@ fn headless_start(robot_queue: RobotQueue, config: &Config) -> Result<(), Headle
 fn main() {
     // Parse args
     let args: Args = Docopt::new(USAGE)
-                            .and_then(|d| d.deserialize())
-                            .unwrap_or_else(|e| e.exit());
+        .and_then(|d| d.deserialize())
+        .unwrap_or_else(|e| e.exit());
 
     // Show version and exit
     if args.flag_version {
@@ -457,7 +504,11 @@ fn main() {
     }
 
     // Init logger
-    let log_level = if args.flag_debug { LevelFilter::Debug } else { LevelFilter::Info };
+    let log_level = if args.flag_debug {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
     if let Err(_) = TermLogger::init(log_level, LogConfig::default(), TerminalMode::Mixed) {
         eprintln!("Could not initialize TermLogger. Falling back to SimpleLogger.");
         SimpleLogger::init(log_level, LogConfig::default())
@@ -524,11 +575,10 @@ fn main_active(config: Config, headless_mode: bool) {
 
     // If we're in headless mode, start the print jobs
     if headless_mode {
-        headless_start(robot_queue.clone(), &config)
-            .unwrap_or_else(|e| {
-                error!("Could not start headless mode: {}", e);
-                abort(3);
-            });
+        headless_start(robot_queue.clone(), &config).unwrap_or_else(|e| {
+            error!("Could not start headless mode: {}", e);
+            abort(3);
+        });
     }
 
     // Start web server
@@ -540,18 +590,20 @@ fn main_active(config: Config, headless_mode: bool) {
             .route("/config/", Method::GET, config_handler)
             .route("/list/", Method::GET, list_handler)
             .route("/preview/", Method::POST, preview_handler)
-            .resource("/print/", |r| r.method(Method::POST).with_async(print_handler));
+            .resource("/print/", |r| {
+                r.method(Method::POST).with_async(print_handler)
+            });
         if headless_mode {
             app = app.route("/", Method::GET, headless_handler);
-        } else{
+        } else {
             app = app.route("/headless/", Method::GET, headless_handler); // For development
             app = app.route("/", Method::GET, index_handler_active);
         };
         app
     })
-        .bind(interface)
-        .unwrap()
-        .run();
+    .bind(interface)
+    .unwrap()
+    .run();
 }
 
 /// Start the web server in preview-only mode.
@@ -574,9 +626,9 @@ fn main_preview(config: PreviewConfig) {
             .route("/preview/", Method::POST, preview_handler)
             .route("/", Method::GET, index_handler_preview)
     })
-        .bind(interface)
-        .unwrap()
-        .run();
+    .bind(interface)
+    .unwrap()
+    .run();
 }
 
 fn abort(exit_code: i32) -> ! {
@@ -611,7 +663,7 @@ mod tests {
             PrintTask::Scheduled(d, p) => {
                 assert_eq!(d, Duration::from_secs(60 * 5));
                 assert_eq!(p, vec![polylines]);
-            },
+            }
             t @ _ => panic!("Task was {:?}", t),
         }
     }

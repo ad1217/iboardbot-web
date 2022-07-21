@@ -1,20 +1,20 @@
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use bufstream::BufStream;
 use regex::Regex;
-use scheduled_executor::CoreExecutor;
 use scheduled_executor::executor::TaskHandle;
+use scheduled_executor::CoreExecutor;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
 use time;
 
-use ::TimeLimits;
+use TimeLimits;
 
 pub(crate) const IBB_WIDTH: u16 = 358;
 pub(crate) const IBB_HEIGHT: u16 = 123;
@@ -67,13 +67,11 @@ impl Command {
         match *self {
             Command::BlockStart => [0xfa, 0x9f, 0xa1],
             Command::BlockNumber(num) => {
-                if num >= 4000 { panic!("Block number must be <4000"); };
-                [
-                    0xfa,
-                    ((0x09 << 4) | (num >> 8)) as u8,
-                    (num & 0xff) as u8,
-                ]
-            },
+                if num >= 4000 {
+                    panic!("Block number must be <4000");
+                };
+                [0xfa, ((0x09 << 4) | (num >> 8)) as u8, (num & 0xff) as u8]
+            }
             Command::StartDrawing => [0xfa, 0x1f, 0xa1],
             Command::StopDrawing => [0xfa, 0x20, 0x00],
             Command::PenLift => [0xfa, 0x30, 0x00],
@@ -88,7 +86,7 @@ impl Command {
                     panic!("May not wait longer than 30 seconds");
                 };
                 [0xfa, 0x60, seconds]
-            },
+            }
             Command::EnableEraser => [0xfa, 0x50, 0x00],
         }
     }
@@ -217,7 +215,7 @@ impl<'a> Sketch<'a> {
         for (i, chunk) in self.buf.chunks(self.block_size - 6).enumerate() {
             let mut block = vec![];
             block.extend_from_slice(&Command::BlockStart.to_bytes());
-            block.extend_from_slice(&Command::BlockNumber((i+1) as u16).to_bytes());
+            block.extend_from_slice(&Command::BlockNumber((i + 1) as u16).to_bytes());
             block.extend_from_slice(chunk);
             blocks.push(block);
         }
@@ -248,20 +246,23 @@ pub(crate) fn communicate(
     time_limits: Option<TimeLimits>,
 ) -> Sender<PrintTask> {
     // Connect to serial device
-    info!("Connecting to {} with baud rate {}...", device, baud_rate.speed());
-    let mut port = serial::open(device)
-        .expect(&format!("Could not open serial device {}", device));
-    setup_serial(&mut port, baud_rate)
-        .expect("Could not configure serial port");
+    info!(
+        "Connecting to {} with baud rate {}...",
+        device,
+        baud_rate.speed()
+    );
+    let mut port = serial::open(device).expect(&format!("Could not open serial device {}", device));
+    setup_serial(&mut port, baud_rate).expect("Could not configure serial port");
 
     // Wrap port into a buffered stream
     let mut ser = BufStream::new(port);
     let mut buf = String::new();
 
     if let Some(limits) = time_limits {
-        info!("Limiting time from {:02}:{:02} to {:02}:{:02}",
-              limits.start_time.0, limits.start_time.1,
-              limits.end_time.0, limits.end_time.1);
+        info!(
+            "Limiting time from {:02}:{:02} to {:02}:{:02}",
+            limits.start_time.0, limits.start_time.1, limits.end_time.0, limits.end_time.1
+        );
     } else {
         info!("No time limits configured");
     };
@@ -307,16 +308,19 @@ pub(crate) fn communicate(
                                     for block in sketch.into_blocks(true) {
                                         queue.push_back(block);
                                     }
-                                },
+                                }
                                 Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
                             }
-                        },
+                        }
                         PrintTask::Scheduled(interval, polylines_vec) => {
                             if polylines_vec.is_empty() {
                                 warn!("Could not schedule print task: polylines_vec is empty");
                                 return;
                             }
-                            info!("-> Task: Scheduling every {} minutes", interval.as_secs() / 60);
+                            info!(
+                                "-> Task: Scheduling every {} minutes",
+                                interval.as_secs() / 60
+                            );
                             if let Some(limits) = time_limits {
                                 info!("-> Task: Time limits: {}", limits);
                             } else {
@@ -355,22 +359,22 @@ pub(crate) fn communicate(
                                     }
                                 }
                             ));
-                        },
+                        }
                     }
                     if let Ok(queue) = blocks_queue.lock() {
                         info!("{} block(s) in queue", queue.len());
                     } else {
                         warn!("Could not unlock blocks queue mutex");
                     }
-                },
+                }
                 Err(RecvTimeoutError::Timeout) => {
                     // We didn't get a new task.
                     // Simply ignore it :)
-                },
+                }
                 Err(RecvTimeoutError::Disconnected) => {
                     info!("Disconnected from robot");
                     break;
-                },
+                }
             };
 
             // Talk to robot over serial
@@ -399,34 +403,41 @@ pub(crate) fn communicate(
                                         // Acked number is our current block, so we can safely
                                         // send the next one.
                                         send_next = true;
-                                    },
+                                    }
                                     Ok(number) if current_block == 0 => {
                                         // We probably started the server process after
                                         // a few blocks were already printed. Catch up.
                                         warn!("Ack too large, update current block number");
                                         current_block = number;
                                         send_next = true;
-                                    },
+                                    }
                                     Ok(number) => {
-                                        warn!("Warning: Got ack for non-current block ({} != {})", number, current_block);
-                                    },
+                                        warn!(
+                                            "Warning: Got ack for non-current block ({} != {})",
+                                            number, current_block
+                                        );
+                                    }
                                     Err(_) => {
                                         error!("Could not parse ACK number \"{}\"", number_str);
-                                    },
+                                    }
                                 }
                             }
 
                             if send_next {
                                 info!("> Print block {}", current_block + 1);
-                                let block = queue.pop_front().expect("Could not pop block from non-empty queue");
-                                ser.write_all(&block)
-                                    .unwrap_or_else(|e| error!("Could not write data to serial: {}", e));
-                                ser.flush()
-                                    .unwrap_or_else(|e| error!("Could not flush serial buffer: {}", e));
+                                let block = queue
+                                    .pop_front()
+                                    .expect("Could not pop block from non-empty queue");
+                                ser.write_all(&block).unwrap_or_else(|e| {
+                                    error!("Could not write data to serial: {}", e)
+                                });
+                                ser.flush().unwrap_or_else(|e| {
+                                    error!("Could not flush serial buffer: {}", e)
+                                });
                                 current_block += 1;
                             }
                         }
-                    },
+                    }
                     Err(e) => error!("Could not unlock blocks queue mutex: {}", e),
                 }
             }
@@ -436,11 +447,10 @@ pub(crate) fn communicate(
     tx
 }
 
-
 #[cfg(test)]
 mod test {
-    use svg2polylines::{Polyline, CoordinatePair};
     use super::*;
+    use svg2polylines::{CoordinatePair, Polyline};
 
     #[test]
     fn test_empty_sketch() {
@@ -448,41 +458,45 @@ mod test {
         let sketch = Sketch::new(&polylines);
         let blocks = sketch.into_blocks(false);
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0], vec![
-            0xfa, 0x9f, 0xa1, // Block start
-            0xfa, 0x90, 0x01, // Block number 1
-            0xfa, 0x1f, 0xa1, // Start drawing
-            0xfa, 0x30, 0x00, // Pen lift
-            0x00, 0x00, 0x00, // Move to 0,0
-            0x00, 0x00, 0x00, // Move to 0,0
-            0xfa, 0x20, 0x00, // Stop drawing
-        ]);
+        assert_eq!(
+            blocks[0],
+            vec![
+                0xfa, 0x9f, 0xa1, // Block start
+                0xfa, 0x90, 0x01, // Block number 1
+                0xfa, 0x1f, 0xa1, // Start drawing
+                0xfa, 0x30, 0x00, // Pen lift
+                0x00, 0x00, 0x00, // Move to 0,0
+                0x00, 0x00, 0x00, // Move to 0,0
+                0xfa, 0x20, 0x00, // Stop drawing
+            ]
+        );
     }
 
     #[test]
     fn test_simple_block() {
-        let polylines: Vec<Polyline> = vec![
-            vec![
-                CoordinatePair::from((12.3, 45.6)),
-                CoordinatePair::from((14.3, 47.6)),
-            ]
-        ];
+        let polylines: Vec<Polyline> = vec![vec![
+            CoordinatePair::from((12.3, 45.6)),
+            CoordinatePair::from((14.3, 47.6)),
+        ]];
         let sketch = Sketch::new(&polylines);
         let blocks = sketch.into_blocks(false);
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0], vec![
-            0xfa, 0x9f, 0xa1, // Block start
-            0xfa, 0x90, 0x01, // Block number 1
-            0xfa, 0x1f, 0xa1, // Start drawing
-            0xfa, 0x30, 0x00, // Pen lift
-            0x00, 0x00, 0x00, // Move to 0,0
-            0x07, 0xb3, 0x06, // Move to 123,456
-            0xfa, 0x40, 0x00, // Pen down
-            0x08, 0xf2, 0xf2, // Move to 143,476
-            0xfa, 0x30, 0x00, // Pen lift
-            0x00, 0x00, 0x00, // Move to 0,0
-            0xfa, 0x20, 0x00, // Stop drawing
-        ]);
+        assert_eq!(
+            blocks[0],
+            vec![
+                0xfa, 0x9f, 0xa1, // Block start
+                0xfa, 0x90, 0x01, // Block number 1
+                0xfa, 0x1f, 0xa1, // Start drawing
+                0xfa, 0x30, 0x00, // Pen lift
+                0x00, 0x00, 0x00, // Move to 0,0
+                0x07, 0xb3, 0x06, // Move to 123,456
+                0xfa, 0x40, 0x00, // Pen down
+                0x08, 0xf2, 0xf2, // Move to 143,476
+                0xfa, 0x30, 0x00, // Pen lift
+                0x00, 0x00, 0x00, // Move to 0,0
+                0xfa, 0x20, 0x00, // Stop drawing
+            ]
+        );
     }
 
     #[test]
@@ -515,5 +529,4 @@ mod test {
         assert_eq!(blocks[0][3..6], [0xfa, 0x90, 0x01]); // Block 1
         assert_eq!(blocks[1][3..6], [0xfa, 0x90, 0x02]); // Block 2
     }
-
 }
