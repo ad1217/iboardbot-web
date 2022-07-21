@@ -23,7 +23,9 @@ use futures::Future;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
 use serial::BaudRate;
-use simplelog::{Config as LogConfig, LevelFilter, SimpleLogger, TermLogger, TerminalMode};
+use simplelog::{
+    ColorChoice, Config as LogConfig, LevelFilter, SimpleLogger, TermLogger, TerminalMode,
+};
 use svg2polylines::Polyline;
 use time::Tm;
 
@@ -499,7 +501,12 @@ fn main() {
     } else {
         LevelFilter::Info
     };
-    if let Err(_) = TermLogger::init(log_level, LogConfig::default(), TerminalMode::Mixed) {
+    if let Err(_) = TermLogger::init(
+        log_level,
+        LogConfig::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    ) {
         eprintln!("Could not initialize TermLogger. Falling back to SimpleLogger.");
         SimpleLogger::init(log_level, LogConfig::default())
             .expect("Could not initialize SimpleLogger");
