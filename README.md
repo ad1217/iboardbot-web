@@ -56,8 +56,8 @@ The configfile needs to look like this:
         "static_dir": "/srv/www/static",
         "interval_seconds": 900,
         "time_limits": {
-            "start_time": [6, 0],
-            "end_time": [0, 30]
+            "start_time": "06:00",
+            "end_time": "00:30"
         }
     }
 

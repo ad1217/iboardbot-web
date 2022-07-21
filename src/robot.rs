@@ -13,7 +13,7 @@ use scheduled_executor::executor::TaskHandle;
 use scheduled_executor::CoreExecutor;
 use serial::{self, BaudRate, PortSettings, SerialPort};
 use svg2polylines::Polyline;
-use time;
+use time::OffsetDateTime;
 
 use crate::TimeLimits;
 
@@ -260,10 +260,7 @@ pub(crate) fn communicate(
     let mut buf = String::new();
 
     if let Some(limits) = time_limits {
-        info!(
-            "Limiting time from {:02}:{:02} to {:02}:{:02}",
-            limits.start_time.0, limits.start_time.1, limits.end_time.0, limits.end_time.1
-        );
+        info!("Limiting time between {}", limits);
     } else {
         info!("No time limits configured");
     };
@@ -335,7 +332,7 @@ pub(crate) fn communicate(
                                 move |_handle| {
                                     // Check the time limits
                                     if let Some(limits) = time_limits {
-                                        if !limits.is_within_limits(&time::now()) {
+                                        if !limits.is_within_limits(&OffsetDateTime::now_local().unwrap().time()) {
                                             info!("Scheduler: Skipping print (outside of time limits)");
                                             return;
                                         }
