@@ -1,11 +1,16 @@
+import Konva from 'konva';
+
+import { ready } from './common.js';
+
 const IBB_WIDTH = 358;
 const IBB_HEIGHT = 123;
 const PREVIEW_SCALE_FACTOR = 3; // Preview is scaled with a factor of 3
+const MARGIN = 10;
 
 /**
  * Load an SVG file.
  */
-async function loadSvg(ev, svg, canvas) {
+async function loadSvg(ev, svg, layer) {
     if (svg.text) {
         const r = await fetch('/preview/', {
             method: 'POST',
@@ -14,8 +19,8 @@ async function loadSvg(ev, svg, canvas) {
         });
         if (r.ok) {
             const polylines = await r.json();
-            canvas.clear();
-            drawPreview(canvas, polylines);
+            layer.destroyChildren();
+            drawPreview(layer, polylines);
         } else {
             console.error('Error: HTTP', r.status);
             if (r.status == 400) {
@@ -27,64 +32,79 @@ async function loadSvg(ev, svg, canvas) {
     }
 }
 
-/**
- * Scale and transform polyline so it can be used by fabric.js.
- */
-function preparePolyline(polyline, scaleFactor) {
-    return polyline.map((pair) => ({
-        x: pair.x * scaleFactor,
-        y: pair.y * scaleFactor,
-    }));
-}
-
-function drawPreview(canvas, polylines) {
+function drawPreview(layer, polylines) {
     // Create group of all polylines
-    const group = [];
+    const group = new Konva.Group({
+        draggable: true,
+        name: 'polylines',
+    });
     for (let polyline of polylines) {
-        const polylineObj = new fabric.Polyline(
-            preparePolyline(polyline, PREVIEW_SCALE_FACTOR),
-            {
-                stroke: 'black',
-                fill: null,
-                lockUniScaling: true,
-                lockRotation: true,
-            }
-        );
-        group.push(polylineObj);
+        const polylineObj = new Konva.Line({
+            points: polyline.map((pair) => [pair.x, pair.y]).flat(),
+            stroke: 'black',
+            hitStrokeWidth: 40, // make it easier to click for dragging
+        });
+        group.add(polylineObj);
     }
-    const groupObj = new fabric.Group(group);
 
     // Re-scale group to fit and center it in viewport
-    const offset = 5 * PREVIEW_SCALE_FACTOR;
-    const height = IBB_HEIGHT * PREVIEW_SCALE_FACTOR;
-    const width = IBB_WIDTH * PREVIEW_SCALE_FACTOR;
-    if (groupObj.height / groupObj.width > height / width) {
-        groupObj.scaleToHeight(height - offset * 2);
+    const clientRect = group.getClientRect({
+        skipShadow: true,
+        skipStroke: true,
+    });
+    // move offset to center of group
+    group.offset({
+        x: clientRect.width / 2 + clientRect.x,
+        y: clientRect.height / 2 + clientRect.y,
+    });
+    const targetSize = {
+        width: IBB_WIDTH - MARGIN,
+        height: IBB_HEIGHT - MARGIN,
+    };
+    if (
+        clientRect.width / clientRect.height >
+        targetSize.width / targetSize.height
+    ) {
+        group.scale({
+            x: targetSize.width / clientRect.width,
+            y: targetSize.width / clientRect.width,
+        });
     } else {
-        groupObj.scaleToWidth(width - offset * 2);
+        group.scale({
+            x: targetSize.height / clientRect.height,
+            y: targetSize.height / clientRect.height,
+        });
     }
-    const centerpoint = new fabric.Point(width / 2, offset);
-    groupObj.setPositionByOrigin(centerpoint, 'center', 'top');
+    // move group to center of viewport
+    group.position({ x: IBB_WIDTH / 2, y: IBB_HEIGHT / 2 });
 
     // Add to canvas
-    canvas.add(groupObj);
+    layer.add(group);
+
+    // Add a transformer for resize handles
+    const tr = new Konva.Transformer({
+        rotateEnabled: false,
+    });
+    layer.add(tr);
+    tr.nodes([group]);
 }
 
 /**
  * Send the object to the printer.
  */
-function printObject(svg, canvas) {
+function printObject(svg, layer) {
     const printMode = document.querySelector('input[name=mode]:checked').value;
 
-    if (canvas.getObjects().length == 0) {
+    const children = layer.getChildren((node) => node.hasName('polylines'));
+    if (children.length == 0) {
         alert('No object loaded. Please choose an SVG file first.');
         return;
     }
 
-    canvas.forEachObject(async (obj, i) => {
+    children.forEach(async (obj, i) => {
         console.debug(`Object ${i}:`);
-        const dx = (obj.left - obj._originalLeft) / PREVIEW_SCALE_FACTOR;
-        const dy = (obj.top - obj._originalTop) / PREVIEW_SCALE_FACTOR;
+        const dx = obj.x() + obj.offsetX();
+        const dy = obj.y() + obj.offsetY();
         console.debug('  Moved by', dx, dy);
         console.debug('  Scaled by', obj.scaleX, obj.scaleY);
 
@@ -95,8 +115,8 @@ function printObject(svg, canvas) {
                 svg: svg.text,
                 offset_x: dx,
                 offset_y: dy,
-                scale_x: obj.scaleX,
-                scale_y: obj.scaleY,
+                scale_x: obj.scaleX(),
+                scale_y: obj.scaleY(),
                 mode: printMode,
             }),
         });
@@ -123,8 +143,15 @@ function printObject(svg, canvas) {
 ready(() => {
     console.info('Started.');
 
-    // Fabric.js canvas object
-    const canvas = new fabric.Canvas('preview');
+    const stage = new Konva.Stage({
+        container: 'preview',
+        width: IBB_WIDTH * PREVIEW_SCALE_FACTOR,
+        height: IBB_HEIGHT * PREVIEW_SCALE_FACTOR,
+        scale: { x: PREVIEW_SCALE_FACTOR, y: PREVIEW_SCALE_FACTOR },
+    });
+    const layer = new Konva.Layer();
+    stage.add(layer);
+
     let svg = {
         text: '',
     };
@@ -136,12 +163,16 @@ ready(() => {
             const fr = new FileReader();
             fr.onload = function (ev) {
                 svg.text = ev.target.result;
-                loadSvg.bind(this)(ev, svg, canvas);
+                loadSvg(ev, svg, layer);
             };
             fr.readAsText(file);
         }
     });
 
     const print = document.querySelector('input#print');
-    print.addEventListener('click', (_clickEvent) => printObject(svg, canvas));
+    if (print !== null) {
+        print.addEventListener('click', (_clickEvent) =>
+            printObject(svg, layer)
+        );
+    }
 });

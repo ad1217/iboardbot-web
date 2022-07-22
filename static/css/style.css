@@ -30,6 +30,7 @@ footer {
 
 #preview {
     display: block;
+    width: min-content;
     margin-top: 16px;
     background-color: #aed389;
 }

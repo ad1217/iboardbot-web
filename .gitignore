@@ -2,3 +2,7 @@ target/
 *.swp
 config.json
 svg/
+/node_modules/
+/.parcel-cache/
+/dist/
+/.log/

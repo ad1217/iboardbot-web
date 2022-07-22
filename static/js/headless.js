@@ -1,3 +1,5 @@
+import { ready } from './common';
+
 /**
  * Load the list of SVG files.
  */
