@@ -18,7 +18,7 @@ use std::time::Duration;
 use actix_files::{Files, NamedFile};
 use actix_web::http::StatusCode;
 use actix_web::HttpServer;
-use actix_web::{get, post, web, App, HttpResponse, ResponseError, Result as ActixResult};
+use actix_web::{get, post, web, App, HttpResponse, ResponseError};
 use docopt::Docopt;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
@@ -186,18 +186,6 @@ struct Args {
     flag_headless: bool,
     flag_debug: bool,
     flag_version: bool,
-}
-
-async fn index_handler_active() -> ActixResult<NamedFile> {
-    Ok(NamedFile::open("static/index.html")?)
-}
-
-async fn index_handler_preview() -> ActixResult<NamedFile> {
-    Ok(NamedFile::open("static/index-preview.html")?)
-}
-
-async fn headless_handler() -> ActixResult<NamedFile> {
-    Ok(NamedFile::open("static/headless.html")?)
 }
 
 #[get("/config/")]
@@ -513,6 +501,11 @@ async fn main_active(config: Config, headless_mode: bool) -> std::io::Result<()>
     let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
+        let index =
+            NamedFile::open(static_dir_path.join("index.html")).expect("Missing index.html file");
+        let headless = NamedFile::open(static_dir_path.join("headless.html"))
+            .expect("Missing headless.html file");
+
         let mut app = App::new()
             .app_data(state.clone())
             .service(Files::new("/static", &config.static_dir))
@@ -521,10 +514,11 @@ async fn main_active(config: Config, headless_mode: bool) -> std::io::Result<()>
             .service(preview_handler)
             .service(print_handler);
         if headless_mode {
-            app = app.route("/", web::get().to(headless_handler));
+            app = app.route("/", web::get().service(headless));
         } else {
-            app = app.route("/headless/", web::get().to(headless_handler)); // For development
-            app = app.route("/", web::get().to(index_handler_active));
+            // For development
+            app = app.route("/headless/", web::get().service(headless));
+            app = app.route("/", web::get().service(index));
         };
         app
     })
@@ -548,10 +542,13 @@ async fn main_preview(config: PreviewConfig) -> std::io::Result<()> {
     let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
+        let index_preview = NamedFile::open(static_dir_path.join("index-preview.html"))
+            .expect("Missing headless.html file");
+
         App::new()
             .service(Files::new("/static", &config.static_dir))
             .service(preview_handler)
-            .route("/", web::get().to(index_handler_preview))
+            .route("/", web::get().service(index_preview))
     })
     .bind(interface)?
     .run()
