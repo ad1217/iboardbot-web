@@ -80,13 +80,6 @@ function drawPreview(layer, polylines) {
 
     // Add to canvas
     layer.add(group);
-
-    // Add a transformer for resize handles
-    const tr = new Konva.Transformer({
-        rotateEnabled: false,
-    });
-    layer.add(tr);
-    tr.nodes([group]);
 }
 
 /**
@@ -151,6 +144,25 @@ ready(() => {
     });
     const layer = new Konva.Layer();
     stage.add(layer);
+
+    // Add a transformer for resize handles
+    const tr_layer = new Konva.Layer();
+    stage.add(tr_layer);
+    const tr = new Konva.Transformer({
+        rotateEnabled: false,
+    });
+    tr_layer.add(tr);
+
+    // clicks should select/deselect
+    stage.on('click tap', function (e) {
+        if (e.target === stage) {
+            tr.nodes([]);
+        } else if (!tr.nodes().includes(e.target.getParent())) {
+            tr.nodes([e.target.getParent()]);
+        } else {
+            tr.nodes([]);
+        }
+    });
 
     let svg = {
         text: '',
