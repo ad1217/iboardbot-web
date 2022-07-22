@@ -13,6 +13,10 @@ h6 {
     font-family: 'Roboto Slab', serif;
 }
 
+main {
+    padding-bottom: 2rem;;
+}
+
 footer {
     position: fixed;
     bottom: 0;
