@@ -140,31 +140,15 @@ impl<'a> Sketch<'a> {
         self.add_command(Command::PenLift);
         self.add_command(Command::Move(0, IBB_HEIGHT * 10));
         self.add_command(Command::EnableEraser);
-        let mut y = IBB_HEIGHT;
         let y_step = 10;
-        loop {
-            // Loop until we're at the bottom
-            if y <= 0 {
-                break;
-            }
-
-            // Move to right and step down
-            self.add_command(Command::Move(IBB_WIDTH * 10, y * 10));
-            if y > y_step {
-                y -= y_step;
-            } else {
-                y = 0;
-            }
-
-            // Move back to left and step down
-            self.add_command(Command::Move(IBB_WIDTH * 10, y * 10));
-            self.add_command(Command::Move(0, y * 10));
-            if y > y_step {
-                y -= y_step;
-            } else {
-                y = 0;
-            }
-            self.add_command(Command::Move(0, y * 10));
+        let steps = (IBB_HEIGHT + y_step - 1) / y_step; // ceiling division
+        for step in 0..steps {
+            let even_step = (step % 2) == 0;
+            let y = IBB_HEIGHT.saturating_sub(step * y_step) * 10;
+            // step down
+            self.add_command(Command::Move(!even_step as u16 * IBB_WIDTH * 10, y));
+            // Move to left/right
+            self.add_command(Command::Move(even_step as u16 * IBB_WIDTH * 10, y));
         }
         self.add_command(Command::PenLift);
         self.add_command(Command::Move(0, 0));
