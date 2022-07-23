@@ -34,14 +34,13 @@ async function loadSvg(ev, svg, layer) {
 
 // Re-scale group to fit and center it in bounds
 function fitGroup(group, bounds, margin) {
-    const clientRect = group.getClientRect({
+    // note: Don't use offset(), as it will change how scaling is
+    // applied, which will break going back to the iboardbot
+
+    // Re-scale group to fit
+    let clientRect = group.getClientRect({
         skipShadow: true,
         skipStroke: true,
-    });
-    // move offset to center of group
-    group.offset({
-        x: clientRect.width / 2 + clientRect.x,
-        y: clientRect.height / 2 + clientRect.y,
     });
 
     // scale to fit in bounds minus margin
@@ -65,7 +64,14 @@ function fitGroup(group, bounds, margin) {
     }
 
     // move group to center of viewport
-    group.position({ x: bounds.width / 2, y: bounds.height / 2 });
+    clientRect = group.getClientRect({
+        skipShadow: true,
+        skipStroke: true,
+    });
+    group.move({
+        x: (IBB_WIDTH - clientRect.width) / 2 - clientRect.x,
+        y: (IBB_HEIGHT - clientRect.height) / 2 - clientRect.y,
+    });
 }
 
 function drawPreview(layer, polylines) {
@@ -103,8 +109,8 @@ function printObject(svg, layer) {
 
     children.forEach(async (obj, i) => {
         console.debug(`Object ${i}:`);
-        const dx = obj.x() + obj.offsetX();
-        const dy = obj.y() + obj.offsetY();
+        const dx = obj.x();
+        const dy = obj.y();
         console.debug('  Moved by', dx, dy);
         console.debug('  Scaled by', obj.scaleX, obj.scaleY);
 
