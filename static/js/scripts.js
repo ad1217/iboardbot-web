@@ -32,22 +32,8 @@ async function loadSvg(ev, svg, layer) {
     }
 }
 
-function drawPreview(layer, polylines) {
-    // Create group of all polylines
-    const group = new Konva.Group({
-        draggable: true,
-        name: 'polylines',
-    });
-    for (let polyline of polylines) {
-        const polylineObj = new Konva.Line({
-            points: polyline.map((pair) => [pair.x, pair.y]).flat(),
-            stroke: 'black',
-            hitStrokeWidth: 40, // make it easier to click for dragging
-        });
-        group.add(polylineObj);
-    }
-
-    // Re-scale group to fit and center it in viewport
+// Re-scale group to fit and center it in bounds
+function fitGroup(group, bounds, margin) {
     const clientRect = group.getClientRect({
         skipShadow: true,
         skipStroke: true,
@@ -57,9 +43,11 @@ function drawPreview(layer, polylines) {
         x: clientRect.width / 2 + clientRect.x,
         y: clientRect.height / 2 + clientRect.y,
     });
+
+    // scale to fit in bounds minus margin
     const targetSize = {
-        width: IBB_WIDTH - MARGIN,
-        height: IBB_HEIGHT - MARGIN,
+        width: bounds.width - margin,
+        height: bounds.height - margin,
     };
     if (
         clientRect.width / clientRect.height >
@@ -75,8 +63,27 @@ function drawPreview(layer, polylines) {
             y: targetSize.height / clientRect.height,
         });
     }
+
     // move group to center of viewport
-    group.position({ x: IBB_WIDTH / 2, y: IBB_HEIGHT / 2 });
+    group.position({ x: bounds.width / 2, y: bounds.height / 2 });
+}
+
+function drawPreview(layer, polylines) {
+    // Create group of all polylines
+    const group = new Konva.Group({
+        draggable: true,
+        name: 'polylines',
+    });
+    for (let polyline of polylines) {
+        const polylineObj = new Konva.Line({
+            points: polyline.map((pair) => [pair.x, pair.y]).flat(),
+            stroke: 'black',
+            hitStrokeWidth: 40, // make it easier to click for dragging
+        });
+        group.add(polylineObj);
+    }
+
+    fitGroup(group, { width: IBB_WIDTH, height: IBB_HEIGHT }, MARGIN);
 
     // Add to canvas
     layer.add(group);
