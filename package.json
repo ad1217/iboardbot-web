@@ -4,5 +4,9 @@
     },
     "dependencies": {
         "konva": "^8.3.10"
+    },
+    "scripts": {
+        "start": "parcel watch --public-url=/static/ static/*.html",
+        "build": "parcel build --public-url=/static/ static/*.html"
     }
 }

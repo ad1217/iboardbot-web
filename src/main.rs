@@ -8,19 +8,19 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{read_dir, DirEntry, File};
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 
-use actix_files::{Files, NamedFile};
 use actix_web::http::StatusCode;
 use actix_web::HttpServer;
-use actix_web::{get, post, web, App, HttpResponse, ResponseError};
+use actix_web::{get, post, web, App, HttpResponse, Responder, ResponseError};
 use docopt::Docopt;
 use log::{error, info};
+use rust_embed::RustEmbed;
 use serde_derive::{Deserialize, Serialize};
 use serial::BaudRate;
 use simplelog::{
@@ -44,7 +44,6 @@ struct RawConfig {
     listen: Option<String>,
     device: Option<String>,
     svg_dir: Option<String>,
-    static_dir: Option<String>,
     interval_seconds: Option<u64>,
     time_limits: Option<TimeLimits>,
 }
@@ -56,7 +55,6 @@ struct Config {
     listen: String,
     device: String,
     svg_dir: String,
-    static_dir: String,
     interval_seconds: u64,
     time_limits: Option<TimeLimits>,
 }
@@ -81,10 +79,6 @@ impl Config {
                 return None;
             }
         };
-        let static_dir = match config.static_dir {
-            Some(ref val) => val.clone(),
-            None => "static".to_string(),
-        };
         let interval_seconds = match config.interval_seconds {
             Some(val) => val,
             None => {
@@ -97,7 +91,6 @@ impl Config {
             listen,
             device,
             svg_dir,
-            static_dir,
             interval_seconds,
             time_limits,
         })
@@ -107,7 +100,6 @@ impl Config {
 #[derive(Debug, Clone)]
 struct PreviewConfig {
     listen: String,
-    static_dir: String,
 }
 
 impl PreviewConfig {
@@ -117,10 +109,6 @@ impl PreviewConfig {
                 .listen
                 .clone()
                 .unwrap_or_else(|| "listen".to_string()),
-            static_dir: config
-                .static_dir
-                .clone()
-                .unwrap_or_else(|| "static".to_string()),
         }
     }
 }
@@ -186,6 +174,24 @@ struct Args {
     flag_headless: bool,
     flag_debug: bool,
     flag_version: bool,
+}
+
+#[derive(RustEmbed)]
+#[folder = "dist"]
+struct Asset;
+
+fn handle_embedded_file(path: &str) -> HttpResponse {
+    match Asset::get(path) {
+        Some(content) => HttpResponse::Ok()
+            .content_type(mime_guess::from_path(path).first_or_octet_stream().as_ref())
+            .body(content.data.into_owned()),
+        None => HttpResponse::NotFound().body("404 Not Found"),
+    }
+}
+
+#[actix_web::get("/static/{_:.*}")]
+async fn static_files_handler(path: web::Path<String>) -> impl Responder {
+    handle_embedded_file(path.as_str())
 }
 
 #[get("/config/")]
@@ -461,11 +467,6 @@ async fn main_active(config: Config, headless_mode: bool) -> std::io::Result<()>
         error!("Device {} does not exist", &config.device);
         abort(2);
     }
-    let static_dir_path = PathBuf::from(&config.static_dir);
-    if !static_dir_path.exists() || !static_dir_path.is_dir() {
-        error!("Static files dir does not exist");
-        abort(2);
-    }
     let svg_dir_path = Path::new(&config.svg_dir);
     if !svg_dir_path.exists() || !svg_dir_path.is_dir() {
         error!("SVG dir {} does not exist", &config.svg_dir);
@@ -501,24 +502,28 @@ async fn main_active(config: Config, headless_mode: bool) -> std::io::Result<()>
     let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
-        let index =
-            NamedFile::open(static_dir_path.join("index.html")).expect("Missing index.html file");
-        let headless = NamedFile::open(static_dir_path.join("headless.html"))
-            .expect("Missing headless.html file");
-
         let mut app = App::new()
             .app_data(state.clone())
-            .service(Files::new("/static", &config.static_dir))
+            .service(static_files_handler)
             .service(config_handler)
             .service(list_handler)
             .service(preview_handler)
             .service(print_handler);
         if headless_mode {
-            app = app.route("/", web::get().service(headless));
+            app = app.route(
+                "/",
+                web::get().to(|| async { handle_embedded_file("headless.html") }),
+            );
         } else {
             // For development
-            app = app.route("/headless/", web::get().service(headless));
-            app = app.route("/", web::get().service(index));
+            app = app.route(
+                "/headless/",
+                web::get().to(|| async { handle_embedded_file("headless.html") }),
+            );
+            app = app.route(
+                "/",
+                web::get().to(|| async { handle_embedded_file("index.html") }),
+            );
         };
         app
     })
@@ -531,24 +536,17 @@ async fn main_active(config: Config, headless_mode: bool) -> std::io::Result<()>
 async fn main_preview(config: PreviewConfig) -> std::io::Result<()> {
     info!("Starting server in preview-only mode");
 
-    // Check for presence of relevant paths
-    let static_dir_path = PathBuf::from(&config.static_dir);
-    if !static_dir_path.exists() || !static_dir_path.is_dir() {
-        error!("Static files dir does not exist");
-        abort(2);
-    }
-
     // Start web server
     let interface = config.listen.clone();
     info!("Listening on {}", interface);
     HttpServer::new(move || {
-        let index_preview = NamedFile::open(static_dir_path.join("index-preview.html"))
-            .expect("Missing headless.html file");
-
         App::new()
-            .service(Files::new("/static", &config.static_dir))
+            .service(static_files_handler)
             .service(preview_handler)
-            .route("/", web::get().service(index_preview))
+            .route(
+                "/",
+                web::get().to(|| async { handle_embedded_file("index-preview.html") }),
+            )
     })
     .bind(interface)?
     .run()
