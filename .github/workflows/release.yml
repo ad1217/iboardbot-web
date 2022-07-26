@@ -1,0 +1,73 @@
+name: Build and release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and Release
+    strategy:
+      matrix:
+        include:
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+          archive_name: iboardbot-web-Linux-x86_64.tar.gz
+        - os: ubuntu-latest
+          target: arm-unknown-linux-gnueabihf
+          cross: true
+          linker_pkg: gcc-arm-linux-gnueabihf
+          linker: arm-linux-gnueabihf-gcc
+          archive_name: iboardbot-web-Linux-RaspberryPi.tar.gz
+        - os: windows-latest
+          target: x86_64-pc-windows-msvc
+          archive_name: iboardbot-web-windows-x86_64.zip
+        - os: macos-latest
+          target: x86_64-apple-darwin
+          archive_name: iboardbot-web-macOS-x86_64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - uses: actions/setup-node@v3
+      with:
+        node-version: current
+        cache: npm
+    - name: Update Rust
+      run: rustup install stable
+    - name: Add Rust target if cross compiling
+      if: matrix.cross
+      run: |
+        rustup target add ${{ matrix.target }}
+        sudo apt-get update
+        sudo apt-get install ${{ matrix.linker_pkg }}
+    - name: Set RUSTFLAGS if linker defined
+      if: matrix.linker
+      run: echo "RUSTFLAGS=-Clinker=$(which ${{ matrix.linker }})" >> $GITHUB_ENV
+    - name: Build project
+      run: cargo build --release --locked --target ${{ matrix.target }}
+    - name: Package
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Windows" ]]
+        then
+          7z a ${{ matrix.archive_name }} ./target/${{ matrix.target }}/release/iboardbot-web.exe
+        else
+          tar czvf ${{ matrix.archive_name }} -C target/${{ matrix.target }}/release iboardbot-web
+        fi
+    - name: Publish
+      uses: softprops/action-gh-release@v1
+      with:
+          files: 'iboardbot-web-*'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
